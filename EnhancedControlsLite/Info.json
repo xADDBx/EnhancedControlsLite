@@ -7,6 +7,6 @@
   "Requirements": [],
   "AssemblyName": "EnhancedControlsLite.dll",
   "EntryMethod": "EnhancedControlsLite.Main.Load",
-  "HomePage": "",
-  "Repository": ""
+  "HomePage": "https://github.com/xADDBx/EnhancedControlsLite",
+  "Repository": "https://raw.githubusercontent.com/xADDBx/EnhancedControlsLite/master/Repository.json"
 }

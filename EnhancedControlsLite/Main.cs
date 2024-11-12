@@ -15,11 +15,13 @@ using TurnBased.Controllers;
 using Kingmaker.Controllers.Clicks.Handlers;
 using Kingmaker.Kingdom;
 using Kingmaker.Armies.TacticalCombat.Controllers;
+using ModKit.Utility;
 
 namespace EnhancedControlsLite;
 
 public static class Main {
     internal static Harmony HarmonyInstance;
+    internal static Harmony HarmonyInstance2;
     internal static UnityModManager.ModEntry.ModLogger log;
     internal static Settings settings;
     internal static bool rightClickIsPatched = false;
@@ -34,21 +36,27 @@ public static class Main {
         settings = Settings.Load<Settings>(modEntry);
         ModKit.Mod.OnLoad(modEntry);
         KeyBindings.OnLoad(modEntry);
-        HarmonyInstance = new Harmony(modEntry.Info.Id);
+        HarmonyInstance = new(modEntry.Info.Id);
+        HarmonyInstance2 = new(modEntry.Info.Id + "2");
         if (settings.RightClickRotate || settings.MiddleClickAlsoRotate) RightClickPatches.Patch();
         if (settings.EndTurnHotkeyEnabled) EndTurnPatches.Patch();
+        if (settings.FastForwardHotkeyEnabled) SpeedUpPatches.Patch();
         KeyBindings.RegisterAction("End Turn", () => {
-            if (CombatController.IsInTurnBasedCombat() || settings.EndTurnKeyBindShouldAlsoPause) {
-                hasPressedPauseBind = true;
-                Game.Instance.PauseBind();
-                hasPressedPauseBind = false;
+            if (settings.EndTurnHotkeyEnabled) {
+                if (CombatController.IsInTurnBasedCombat() || settings.EndTurnKeyBindShouldAlsoPause) {
+                    hasPressedPauseBind = true;
+                    Game.Instance.PauseBind();
+                    hasPressedPauseBind = false;
+                }
             }
         });
         KeyBindings.RegisterAction("Fast Forward", () => {
-            if (CombatController.IsInTurnBasedCombat()) {
-                hasPressedFastBind = true;
-                Game.Instance.PauseBind();
-                hasPressedFastBind = false;
+            if (settings.FastForwardHotkeyEnabled) {
+                if (CombatController.IsInTurnBasedCombat() && (!Game.Instance.TurnBasedCombatController.CurrentTurn?.CanEndTurnAndNoActing() ?? true)) {
+                    hasPressedFastBind = true;
+                    Game.Instance.PauseBind();
+                    hasPressedFastBind = false;
+                }
             }
         });
         KeyBindings.RegisterAction("Alt RMB", () => { });
@@ -73,7 +81,7 @@ public static class Main {
             }
         }
         Div();
-        if (DisclosureToggle("Use a separate Speed Up Combat Turn hotkey?", ref settings.FastForwardHotkeyEnabled)) {
+        if (DisclosureToggle("Use a separate Speed Up Turn hotkey?", ref settings.FastForwardHotkeyEnabled)) {
             if (settings.FastForwardHotkeyEnabled) {
                 SpeedUpPatches.Patch();
             } else {
@@ -111,36 +119,38 @@ public static class Main {
     }
     public static class EndTurnPatches {
         public static void Patch() {
-            HarmonyInstance.Patch(AccessTools.Method(typeof(Game), nameof(Game.PauseBind)), transpiler: new(AccessTools.Method(typeof(EndTurnPatches), nameof(PauseBind))));
+            HarmonyInstance.Patch(AccessTools.Method(typeof(Game), nameof(Game.PauseBind)), transpiler: new(AccessTools.Method(typeof(EndTurnPatches), nameof(SeparateEndTurnBind))));
         }
         public static void UnPatch() {
             HarmonyInstance.Unpatch(AccessTools.Method(typeof(Game), nameof(Game.PauseBind)), HarmonyPatchType.Transpiler, HarmonyInstance.Id);
         }
-        private static IEnumerable<CodeInstruction> PauseBind(IEnumerable<CodeInstruction> instructions) {
+        private static IEnumerable<CodeInstruction> SeparateEndTurnBind(IEnumerable<CodeInstruction> instructions) {
             var codes = new List<CodeInstruction>(instructions);
             for (int i = 0; i < codes.Count; i++) {
                 if (codes[i].Calls(AccessTools.Method(typeof(CombatController), nameof(CombatController.IsInTurnBasedCombat)))) {
-                    codes.InsertRange(i + 2, [CodeInstruction.LoadField(typeof(Main), nameof(hasPressedPauseBind)), new CodeInstruction(OpCodes.Brfalse, codes[i + 1].operand)]);
+                    codes.InsertRange(i + 2, [CodeInstruction.Call(() => PressedPauseOrSpeedUp()), new CodeInstruction(OpCodes.Brfalse, codes[i + 1].operand)]);
                 }
             }
             return codes;
         }
+        public static bool PressedPauseOrSpeedUp() => hasPressedFastBind || hasPressedPauseBind;
     }
     public static class SpeedUpPatches {
         public static void Patch() {
-            HarmonyInstance.Patch(AccessTools.Method(typeof(Game), nameof(Game.PauseBind)), transpiler: new(AccessTools.Method(typeof(EndTurnPatches), nameof(PauseBind))));
+            HarmonyInstance2.Patch(AccessTools.Method(typeof(Game), nameof(Game.PauseBind)), transpiler: new(AccessTools.Method(typeof(SpeedUpPatches), nameof(SeparateSpeedUpBind))));
         }
         public static void UnPatch() {
-            HarmonyInstance.Unpatch(AccessTools.Method(typeof(Game), nameof(Game.PauseBind)), HarmonyPatchType.Transpiler, HarmonyInstance.Id);
+            HarmonyInstance2.Unpatch(AccessTools.Method(typeof(Game), nameof(Game.PauseBind)), HarmonyPatchType.Transpiler, HarmonyInstance2.Id);
         }
-        private static IEnumerable<CodeInstruction> PauseBind(IEnumerable<CodeInstruction> instructions) {
-            var codes = new List<CodeInstruction>(instructions);
-            for (int i = 0; i < codes.Count; i++) {
-                if (codes[i].LoadsConstant("Player.UISettings.DoSpeedUp()")) {
-                    codes.InsertRange(i, [CodeInstruction.LoadField(typeof(Main), nameof(hasPressedFastBind)), new CodeInstruction(OpCodes.Brfalse, codes.First(c => c.LoadsConstant("End of PauseBind() method")).operand)]);
+        private static IEnumerable<CodeInstruction> SeparateSpeedUpBind(IEnumerable<CodeInstruction> instructions) {
+            var label = instructions.First(c => c.LoadsConstant("End of PauseBind() method")).labels[0];
+            foreach (var inst in instructions) {
+                if (inst.LoadsConstant("Player.UISettings.DoSpeedUp()")) {
+                    yield return CodeInstruction.LoadField(typeof(Main), nameof(hasPressedFastBind)).MoveLabelsFrom(inst);
+                    yield return new CodeInstruction(OpCodes.Brfalse, label);
                 }
+                yield return inst;
             }
-            return codes;
         }
     }
     public static class RightClickPatches {
