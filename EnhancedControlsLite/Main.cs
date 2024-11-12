@@ -64,7 +64,7 @@ public static class Main {
     }
     public static void OnSaveGUI(UnityModManager.ModEntry modEntry) => settings.Save(modEntry);
     public static void OnGUI(UnityModManager.ModEntry modEntry) {
-        if (DisclosureToggle("Use a separate End Turn hotkey?", ref settings.EndTurnHotkeyEnabled)) {
+        if (DisclosureToggle("Use a separate End Turn hotkey", ref settings.EndTurnHotkeyEnabled)) {
             if (settings.EndTurnHotkeyEnabled) {
                 EndTurnPatches.Patch();
             } else {
@@ -81,7 +81,7 @@ public static class Main {
             }
         }
         Div();
-        if (DisclosureToggle("Use a separate Speed Up Turn hotkey?", ref settings.FastForwardHotkeyEnabled)) {
+        if (DisclosureToggle("Use a separate Speed Up Turn hotkey", ref settings.FastForwardHotkeyEnabled)) {
             if (settings.FastForwardHotkeyEnabled) {
                 SpeedUpPatches.Patch();
             } else {
