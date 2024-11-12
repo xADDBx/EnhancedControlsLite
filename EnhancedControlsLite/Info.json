@@ -1,0 +1,12 @@
+﻿{
+  "Id": "EnhancedControlsLite",
+  "DisplayName": "EnhancedControlsLite",
+  "Author": "ADDB",
+  "Version": "1.1.0",
+  "ManagerVersion": "0.27.11",
+  "Requirements": [],
+  "AssemblyName": "EnhancedControlsLite.dll",
+  "EntryMethod": "EnhancedControlsLite.Main.Load",
+  "HomePage": "",
+  "Repository": ""
+}
